@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -22,10 +25,24 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buf := new(bytes.Buffer)
-	_, _ = buf.ReadFrom(r.Body)
-	body := buf.String()
+	// 追加
+	verifier, err := slack.NewSecretsVerifier(r.Header, os.Getenv("SLACK_SIGNING_SECRET"))
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
+	bodyReader := io.TeeReader(r.Body, &verifier)
+	if err := verifier.Ensure(); err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(bodyReader)
+	body := buf.String()
 	eventsAPIEvent, err := slackevents.ParseEvent(json.RawMessage(body), slackevents.OptionNoVerifyToken())
 	if err != nil {
 		log.Println(err)
@@ -46,6 +63,21 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.AppMentionEvent:
 			_, _, _ = h.slackClient.PostMessage(ev.Channel, slack.MsgOptionText("Yes, hello.", false))
+
+			message := strings.Split(ev.Text, " ")
+			if len(message) < 2 {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			command := message[1]
+			switch command {
+			case "ping":
+				if _, _, err := h.slackClient.PostMessage(ev.Channel, slack.MsgOptionText("pong", false)); err != nil {
+					log.Println(err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 	default:
 		log.Printf("[ERROR] ]Invalid event type was submitted: %s", eventsAPIEvent.Type)

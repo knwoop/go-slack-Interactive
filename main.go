@@ -17,14 +17,10 @@ type Env struct {
 	SlackBotToken string `envconfig:"SLACK_BOT_TOKEN" required:"true"`
 
 	// VerificationToken is used to validate interactive messages from slack.
-	VerificationToken string `envconfig:"VERIFICATION_TOKEN" required:"true"`
+	SlackVerificationToken string `envconfig:"VERIFICATION_TOKEN" required:"true"`
 
 	// BotID is bot user ID.
-	BotID string `envconfig:"BOT_ID" required:"true"`
-
-	// ChannelID is slack channel ID where bot is working.
-	// Bot responses to the mention in this channel.
-	ChannelID string `envconfig:"CHANNEL_ID" required:"true"`
+	SlackBotID string `envconfig:"BOT_ID" required:"true"`
 }
 
 func main() {
@@ -41,11 +37,12 @@ func run() int {
 
 	http.Handle("/interaction", interactionHandler{
 		slackClient:       api,
-		verificationToken: env.VerificationToken,
+		verificationToken: env.SlackVerificationToken,
 	})
 
 	log.Println("[INFO] Server listening")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
+	return 0
 }
